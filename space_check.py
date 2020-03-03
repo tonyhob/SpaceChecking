@@ -80,7 +80,7 @@ def get_ent_status(ent_status):
         ent_status = 0
     if ent_prev_status != ent_status:
         ent_sendflag = True
-        logging.debug("ent_status="+ent_status)
+        logging.debug("ent_status="+str(ent_status))
     return ent_sendflag, ent_status
 
 
