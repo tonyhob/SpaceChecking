@@ -4,6 +4,7 @@ import time
 from Bluetin_Echo import Echo
 import paho.mqtt.client as mqtt
 import mysql.connector
+import json
 
 # addr = "CB201"
 # pub_logevent_topic = "sps/log"
@@ -25,10 +26,9 @@ echo_pin = [1, 20, 8]
 led = 21
 
 
-
-
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(led, GPIO.OUT)
+GPIO.setwarnings(False)
 
 status = [0] * len(trig_pin)
 prev_status = [0] * len(trig_pin)
@@ -82,14 +82,14 @@ def get_all_avail():
     prev_status = status.copy()
     for i in range(len(trig_pin)):
         dis = echo[i].read('cm', samples)
-        print(int(dis), end=", ")
+        # print(int(dis), end=", ")
         if dis > dis_requirement:
             status[i] = 0
         else:
             status[i] = 1
         if prev_status[i] != status[i]:
             sendflag = True
-    print (status)
+    # print (status)
     prev_status.clear()
     return sendflag
 
@@ -97,16 +97,18 @@ def avail_to_db(status):
     cur = mdb.cursor()
     dt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     sql = "INSERT INTO CB201 (Time, "
-    for i in range(len(trig_pin)):
+    for i in range(len(status)):
         sql = sql + "s" + str(i+1) +", "
     sql = sql.strip(', ') + ") VALUES (%s, " + ("%s, ")*(len(trig_pin)-1) + "%s)"
     temp_val = [dt]
-    for i in range(len(trig_pin)):
-        temp_val.append(status[i])
+    for i in status:
+        temp_val.append(i)
     val=tuple(temp_val)
     cur.execute(sql, val)
     mdb.commit()
-    log_event(221, "\"availability\": \"" + "".join(str(i) for i in status)+ "\"")
+
+    mqttdata = {1000+i:status[i] for i in range(len(status))}
+    log_event(221, json.dumps(mqttdata))
     # print("sent to db: " + str(status))
     led_blink()
 
@@ -141,11 +143,12 @@ try:
                 pass
         
         log_event(120, "ready")
-        log_event(121, "\"spaceNumber\": \""+str(len(trig_pin))+"\"")
+        # log_event(121, "\"spaceNumber\": \""+str(len(trig_pin))+"\"")
+        log_event(121, str({'spaceNumber': len(trig_pin)}))
 
         #############mainevent
         while mqttsetup == 0:
-            mqttsetup = client.loop()
+            client.loop()
             ent_sendflag, ent_status = get_ent_status(ent_status)
             if ent_sendflag == 1:
                 log_event(220, "\"entrance\": \""+str(ent_status)+"\"")
