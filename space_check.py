@@ -5,7 +5,7 @@ import time
 import paho.mqtt.client as mqtt
 import mysql.connector
 
-# addr = "CB201"
+# addr = "CB201"d
 
 mqtt_server = "192.168.1.3"
 mqtt_port = 1883
