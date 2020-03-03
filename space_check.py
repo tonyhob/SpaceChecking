@@ -5,6 +5,12 @@ from Bluetin_Echo import Echo
 import paho.mqtt.client as mqtt
 import mysql.connector
 import json
+import logging
+
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s %(levelname)s %(message)s',
+                    filename='spacecheck.log',
+                    filemode='w')
 
 # addr = "CB201"
 # pub_logevent_topic = "sps/log"
@@ -53,15 +59,15 @@ def log_event(event,event_detail):
     dt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     cur.execute("INSERT INTO system_log (Time ,Event , Details) VALUES (%s, %s, %s)", (dt, event, event_detail))
     mdb.commit()
-    print(str(event)+ " " + event_detail)
+    logging.info(str(event)+ ", " + event_detail)
     led_blink()
 
 def on_connect(client, userdata, flags, rc):
-    # print("Connected mqtt with result code "+str(rc))
+    logging.debug("Connected mqtt with result code "+str(rc))
     client.subscribe(sub_topic)
 
 def on_message(client, userdata, msg):
-    print(msg.topic+" "+str(msg.payload))
+    logging.info(msg.topic+" "+str(msg.payload))
 
 
 def get_ent_status(ent_status):
@@ -74,6 +80,7 @@ def get_ent_status(ent_status):
         ent_status = 0
     if ent_prev_status != ent_status:
         ent_sendflag = True
+        logging.debug("ent_status="+ent_status)
     return ent_sendflag, ent_status
 
 
@@ -82,14 +89,14 @@ def get_all_avail():
     prev_status = status.copy()
     for i in range(len(trig_pin)):
         dis = echo[i].read('cm', samples)
-        # print(int(dis), end=", ")
+        # logging.debug(str(dis), end=", ")
+        logging.debug(str(dis))
         if dis > dis_requirement:
             status[i] = 0
         else:
             status[i] = 1
         if prev_status[i] != status[i]:
             sendflag = True
-    # print (status)
     prev_status.clear()
     return sendflag
 
@@ -109,32 +116,32 @@ def avail_to_db(status):
 
     mqttdata = {1000+i:status[i] for i in range(len(status))}
     log_event(221, json.dumps(mqttdata))
-    # print("sent to db: " + str(status))
+    logging.debug("sent to db: " + str(status))
     led_blink()
 
 
-dbsetup = 1    
-mqttsetup = 1
+dbsetup = 0   
+mqttsetup = 0
 client = mqtt.Client()
 client.on_connect = on_connect
 client.on_message = on_message
 
 try: 
     mdb = mysql.connector.connect(host="192.168.1.3", user="spsadmin", passwd="sps", database="parksys")
-    dbsetup = 0
-    print("db set well")
+    logging.info("mdb set well")
+    dbsetup = 1
 except:
-    print( "Warning: No database (connection) found. Retry in one minute.")
+    logging.warning( "Warning: No database (connection) found. Retry in one minute.")
+    dbsetup = 0
     time.sleep(60)
     pass
 
 try:
     client.connect(mqtt_server,mqtt_port, mqtt_alive)
-    print("mqtt set well")
-    mqttsetup = 0
+    logging.info("mqtt set well")
     client.loop_start()
 except:
-    print("Warning: No broker found. Retry in one minute.")
+    logging.warning("Warning: No broker found. Retry in one minute.")
     log_event(421, "No broker found")
     time.sleep(60)
     pass
@@ -145,23 +152,25 @@ log_event(121, str({'spaceNumber': len(trig_pin)}))
 
 try:
     while True:
-        if mysql.connector.is_connected() == True:
-            ent_sendflag, ent_status = get_ent_status(ent_status)
-            if ent_sendflag == 1:
-                log_event(220, "\"entrance\": \""+str(ent_status)+"\"")
-            if get_all_avail() == True:
-                avail_to_db(status)
-        else:
+        while dbsetup == 0:
             try: 
                 mdb = mysql.connector.connect(host="192.168.1.3", user="spsadmin", passwd="sps", database="parksys")
-                dbsetup = 0
-                print("db set well")
+                dbsetup = 1
             except:
                 print( "Warning: No database (connection) found. Retry in one minute.")
+                dbsetup = 0
                 time.sleep(60)
                 pass
-        
+        dbsetup = 0
 
+        ent_sendflag, ent_status = get_ent_status(ent_status)
+        if ent_sendflag == 1:
+            log_event(220, "\"entrance\": \""+str(ent_status)+"\"")
+        if get_all_avail() == True:
+            avail_to_db(status)
+
+        
+        
 
 except KeyboardInterrupt:
     GPIO.cleanup()
