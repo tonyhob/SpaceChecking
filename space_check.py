@@ -118,10 +118,40 @@ mqttsetup = 1
 client = mqtt.Client()
 client.on_connect = on_connect
 client.on_message = on_message
+
+try: 
+    mdb = mysql.connector.connect(host="192.168.1.3", user="spsadmin", passwd="sps", database="parksys")
+    dbsetup = 0
+    print("db set well")
+except:
+    print( "Warning: No database (connection) found. Retry in one minute.")
+    time.sleep(60)
+    pass
+
+try:
+    client.connect(mqtt_server,mqtt_port, mqtt_alive)
+    print("mqtt set well")
+    mqttsetup = 0
+    client.loop_start()
+except:
+    print("Warning: No broker found. Retry in one minute.")
+    log_event(421, "No broker found")
+    time.sleep(60)
+    pass
+client.loop_start()
+log_event(120, "mqtt ready")
+log_event(121, str({'spaceNumber': len(trig_pin)}))
+
+
 try:
     while True:
-        #########################  setup connection
-        while dbsetup == 1:
+        if mysql.connector.is_connected() == True:
+            ent_sendflag, ent_status = get_ent_status(ent_status)
+            if ent_sendflag == 1:
+                log_event(220, "\"entrance\": \""+str(ent_status)+"\"")
+            if get_all_avail() == True:
+                avail_to_db(status)
+        else:
             try: 
                 mdb = mysql.connector.connect(host="192.168.1.3", user="spsadmin", passwd="sps", database="parksys")
                 dbsetup = 0
@@ -131,29 +161,6 @@ try:
                 time.sleep(60)
                 pass
         
-        while mqttsetup == 1:
-            try:
-                client.connect(mqtt_server,mqtt_port, mqtt_alive)
-                print("mqtt set well")
-                mqttsetup = 0
-            except:
-                print("Warning: No broker found. Retry in one minute.")
-                log_event(421, "No broker found")
-                time.sleep(60)
-                pass
-        
-        log_event(120, "ready")
-        # log_event(121, "\"spaceNumber\": \""+str(len(trig_pin))+"\"")
-        log_event(121, str({'spaceNumber': len(trig_pin)}))
-
-        #############mainevent
-        while mqttsetup == 0:
-            client.loop()
-            ent_sendflag, ent_status = get_ent_status(ent_status)
-            if ent_sendflag == 1:
-                log_event(220, "\"entrance\": \""+str(ent_status)+"\"")
-            if get_all_avail() == True:
-                avail_to_db(status)
 
 
 except KeyboardInterrupt:
